@@ -1,0 +1,20 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.aps
+ipch/
+
+# Build output
+x64/
+Debug/
+Release/
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.exp
+
+# OS
+.DS_Store
+Thumbs.db
