@@ -6,6 +6,8 @@
 #include "Renderer.h"
 #include "Camera.h"
 #include <glm/gtc/matrix_transform.hpp> // needed for glm::rotate, glm::translate, glm::scale
+#include "Chunk.h"
+#include "ChunkMesher.h"
 
 // Shaders
 const char* vertexShaderSource = R"(
@@ -81,12 +83,33 @@ int main()
     GLFWwindow* window = glfwCreateWindow(800, 600, "Clean Triangle", NULL, NULL);
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
+    // without this faces draw in random order — closer faces can appear behind further ones
+    glEnable(GL_DEPTH_TEST);
+
+    // skip faces pointing away from the camera — you never see the inside of a block
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glFrontFace(GL_CCW); // counter-clockwise winding = front face
+
 
     Shader shader(vertexShaderSource, fragmentShaderSource);
     Renderer renderer;
 
+    // generate the chunk data
+    Chunk chunk;
+
+    // build the mesh from the chunk
+    ChunkMesher mesher;
+    mesher.buildMesh(chunk);
+
+    // upload the mesh to the GPU — only needed once for a static chunk
+    renderer.uploadMesh(mesher.vertices, mesher.indices);
+
     // create camera starting 3 units back from the origin, looking forward
-    Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+    //Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+
+    // start further back, higher up, looking down at the chunk
+    Camera camera(glm::vec3(8.0f, 10.0f, 25.0f));
 
     // point the global at our camera and register the callback with GLFW
     g_camera = &camera;
@@ -117,66 +140,43 @@ int main()
         // --- input ---
         camera.processKeyboard(window, deltaTime);
 
-        // --- matrices ---
-        // model matrix — remove the rotation, just sit the square flat for now
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f)); // at the origin
+        // press F to toggle wireframe — lets you see the mesh structure
+        static bool wireframe = false;
+        static bool fWasPressed = false;
+        bool fIsPressed = glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS;
+        if (fIsPressed && !fWasPressed)
+        {
+            wireframe = !wireframe;
+            glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
+        }
+        fWasPressed = fIsPressed;
 
-        // view matrix — comes from the camera position and direction
+        // --- matrices ---
+        // identity matrix — chunk sits at the world origin
+        glm::mat4 model = glm::mat4(1.0f);
+
+        // view matrix — where the camera is and what it sees
         glm::mat4 view = camera.getViewMatrix();
 
-        // projection matrix — perspective, using window aspect ratio
+        // projection matrix — adds perspective
         glm::mat4 projection = camera.getProjectionMatrix(800.0f / 600.0f);
-
-        // --- color ---
-        float time = currentFrame;
-        glm::vec3 color(
-            sin(time) * 0.5f + 0.5f,
-            sin(time + 2.0f) * 0.5f + 0.5f,
-            sin(time + 4.0f) * 0.5f + 0.5f
-        );
 
         // --- clear ---
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        // clear both buffers — color is what you see, depth tracks which face is closest
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // --- draw ---
+        // --- draw chunk ---
         shader.use();
         shader.setMat4("uModel", model);
         shader.setMat4("uView", view);
         shader.setMat4("uProjection", projection);
-        shader.setVec3("uColor", color);
-        
 
-        // define positions for multiple squares in 3D space
-        // each one will be drawn with the same mesh but a different model matrix
-        glm::vec3 positions[] = {
-            glm::vec3(0.0f,  0.0f,  0.0f),   // centre
-            glm::vec3(1.2f,  0.0f, -1.0f),   // right and slightly back
-            glm::vec3(-1.2f,  0.0f, -1.0f),   // left and slightly back
-            glm::vec3(0.0f,  1.2f, -2.0f),   // above and further back
-            glm::vec3(0.0f, -1.2f, -2.0f),   // below and further back
-        };
+        // solid green so we can clearly see the block faces
+        shader.setVec3("uColor", glm::vec3(0.2f, 0.8f, 0.2f));
 
-        // loop through each position and draw the same square at each one
-        for (int i = 0; i < 5; i++)
-        {
-            // start fresh with an identity matrix for each object
-            glm::mat4 model = glm::mat4(1.0f);
-
-            // move to this object's position
-            model = glm::translate(model, positions[i]);
-
-            // rotate each square at a slightly different speed
-            // multiplying by i offsets each one so they dont all spin identically
-            model = glm::rotate(model, time * (i + 1) * 0.3f, glm::vec3(0.0f, 1.0f, 0.0f));
-
-            // send this object's unique model matrix to the shader
-            shader.setMat4("uModel", model);
-
-            // draw — same geometry every time, position comes from the matrix
-            renderer.draw();
-        }
+        // draw the chunk mesh
+        renderer.draw((int)mesher.indices.size());
 
         glfwSwapBuffers(window);
         glfwPollEvents();

@@ -3,54 +3,62 @@
 
 Renderer::Renderer()
 {
-    // a square is just two triangles sharing an edge
-    // we define 4 corners instead of 6 vertices (which would duplicate two)
-    float vertices[] = {
-         0.5f,  0.5f, 0.0f,   // top right     — index 0
-         0.5f, -0.5f, 0.0f,   // bottom right  — index 1
-        -0.5f, -0.5f, 0.0f,   // bottom left   — index 2
-        -0.5f,  0.5f, 0.0f    // top left      — index 3
-    };
-
-    // the EBO tells the GPU which vertices to connect into triangles
-    // triangle 1: top right, bottom right, top left
-    // triangle 2: bottom right, bottom left, top left
-    // together they form a square — notice indices 1 and 3 are reused
-    unsigned int indices[] = {
-        0, 1, 3,   // first triangle
-        1, 2, 3    // second triangle
-    };
-
-    // create the VAO, VBO and EBO on the GPU
+    // create empty VAO, VBO and EBO on the GPU
+    // no vertex data yet — uploadMesh() fills them
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
-    glGenBuffers(1, &EBO); // ADD — generate the index buffer
+    glGenBuffers(1, &EBO);
 
-    // bind VAO first — it records everything that follows
+    // bind the VAO so it records the buffer and attribute setup below
     glBindVertexArray(VAO);
 
-    // upload vertex positions to the VBO
+    // bind buffers — empty for now, uploadMesh() will fill them
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    // ADD — upload indices to the EBO
-    // GL_ELEMENT_ARRAY_BUFFER tells OpenGL this is an index buffer not vertex data
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
     // tell the GPU the format of each vertex
-    // location 0, 3 floats per vertex, no gaps between them
+    // each vertex is 3 floats (x, y, z) packed tightly together
+    // location 0 matches "layout (location = 0) in vec3 aPos" in the vertex shader
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
+
+    // unbind VAO — good habit, prevents accidental modification
+    glBindVertexArray(0);
 }
 
-void Renderer::draw()
+void Renderer::uploadMesh(const std::vector<Vertex>& vertices, const std::vector<unsigned int>& indices)
+{
+    // store index count so draw() knows how many to render
+    m_indexCount = (int)indices.size();
+
+    // bind the VAO so our uploads are recorded
+    glBindVertexArray(VAO);
+
+    // upload vertex data to the VBO
+    // GL_DYNAMIC_DRAW tells the GPU this data may change — good for chunk updates later
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER,
+        vertices.size() * sizeof(Vertex),  // total bytes
+        vertices.data(),                    // pointer to the data
+        GL_DYNAMIC_DRAW);
+
+    // upload index data to the EBO
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+        indices.size() * sizeof(unsigned int),  // total bytes
+        indices.data(),                          // pointer to the data
+        GL_DYNAMIC_DRAW);
+
+    glBindVertexArray(0);
+}
+
+void Renderer::draw(int indexCount)
 {
     glBindVertexArray(VAO);
 
-    // CHANGED — glDrawElements instead of glDrawArrays
-    // glDrawArrays just draws vertices in order
-    // glDrawElements uses the index buffer to know which vertices to connect
-    // 6 = total indices (two triangles x 3 corners each)
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    // draw using the index buffer
+    // indexCount tells OpenGL how many indices to process
+    glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
+
+    glBindVertexArray(0);
 }
