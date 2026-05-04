@@ -95,7 +95,7 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 
-    GLFWwindow* window = glfwCreateWindow(800, 600, "Clean Triangle", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(800, 600, "Minecraft Clone", NULL, NULL);
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
     // without this faces draw in random order — closer faces can appear behind further ones
@@ -135,6 +135,9 @@ int main()
     // hide and lock the cursor to the window
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
+    // cursor is visible and free — click window to focus, mouse still controls camera
+    //glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+
 
     while (!glfwWindowShouldClose(window))
     {
@@ -168,7 +171,7 @@ int main()
         glm::mat4 projection = camera.getProjectionMatrix(800.0f / 600.0f);
 
         // clear color and depth buffer each frame
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        glClearColor(0.53f, 0.81f, 0.98f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // activate the shader before sending uniforms
