@@ -8,6 +8,7 @@
 #include <glm/gtc/matrix_transform.hpp> // needed for glm::rotate, glm::translate, glm::scale
 #include "Chunk.h"
 #include "ChunkMesher.h"
+#include "World.h"
 
 // Shaders
 const char* vertexShaderSource = R"(
@@ -16,31 +17,45 @@ const char* vertexShaderSource = R"(
 // vertex position from the VBO
 layout (location = 0) in vec3 aPos;
 
-// model = where this object is in the world
-// view  = where the camera is and what it sees
-// proj  = perspective — makes far things look small
+// model, view, projection matrices
 uniform mat4 uModel;
 uniform mat4 uView;
 uniform mat4 uProjection;
 
+// pass the height to the fragment shader so it can colour by block type
+out float vHeight;
+
 void main()
 {
-    // order matters — projection * view * model * position
-    // read right to left: move object, then apply camera, then apply perspective
+    // pass the y position to the fragment shader
+    // fragment shader will use this to pick a colour
+    vHeight = aPos.y;
+
     gl_Position = uProjection * uView * uModel * vec4(aPos, 1.0);
 }
 )";
 
 const char* fragmentShaderSource = R"(
 #version 330 core
-// the final pixel color output
+
 out vec4 FragColor;
-// color sent from the CPU — vec3 is r, g, b (0.0 to 1.0)
-uniform vec3 uColor;
+
+// height value passed in from the vertex shader
+in float vHeight;
+
 void main()
 {
-    // use the color from the CPU, with 1.0 as full opacity
-    FragColor = vec4(uColor, 1.0);
+    // colour based on height — gives each layer a distinct colour
+    // these ranges match the height values from your noise generator
+    if (vHeight >= 9.0)
+        // grass — green
+        FragColor = vec4(0.2, 0.7, 0.2, 1.0);
+    else if (vHeight >= 7.0)
+        // dirt — brown
+        FragColor = vec4(0.5, 0.3, 0.1, 1.0);
+    else
+        // stone — grey
+        FragColor = vec4(0.5, 0.5, 0.5, 1.0);
 }
 )";
 
@@ -95,15 +110,8 @@ int main()
     Shader shader(vertexShaderSource, fragmentShaderSource);
     Renderer renderer;
 
-    // generate the chunk data
-    Chunk chunk;
-
-    // build the mesh from the chunk
-    ChunkMesher mesher;
-    mesher.buildMesh(chunk);
-
-    // upload the mesh to the GPU — only needed once for a static chunk
-    renderer.uploadMesh(mesher.vertices, mesher.indices);
+    // world manages all chunks — generates and uploads them all on construction
+    World world;
 
     // create camera starting 3 units back from the origin, looking forward
     //Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
@@ -151,32 +159,27 @@ int main()
         }
         fWasPressed = fIsPressed;
 
-        // --- matrices ---
-        // identity matrix — chunk sits at the world origin
-        glm::mat4 model = glm::mat4(1.0f);
+        // ADD THESE — matrices and clear were lost in the refactor
 
         // view matrix — where the camera is and what it sees
         glm::mat4 view = camera.getViewMatrix();
 
-        // projection matrix — adds perspective
+        // projection matrix — perspective, using window aspect ratio
         glm::mat4 projection = camera.getProjectionMatrix(800.0f / 600.0f);
 
-        // --- clear ---
+        // clear color and depth buffer each frame
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        // clear both buffers — color is what you see, depth tracks which face is closest
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // --- draw chunk ---
+        // activate the shader before sending uniforms
         shader.use();
-        shader.setMat4("uModel", model);
+
+        // send view and projection once — they're the same for all chunks
         shader.setMat4("uView", view);
         shader.setMat4("uProjection", projection);
 
-        // solid green so we can clearly see the block faces
-        shader.setVec3("uColor", glm::vec3(0.2f, 0.8f, 0.2f));
-
-        // draw the chunk mesh
-        renderer.draw((int)mesher.indices.size());
+        // world.draw handles the model matrix and draw call for each chunk
+        world.draw(shader);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
