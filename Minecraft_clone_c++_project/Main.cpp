@@ -9,28 +9,37 @@
 #include "Chunk.h"
 #include "ChunkMesher.h"
 #include "World.h"
+#include "Texture.h"
+#include <iostream>
+#include <filesystem>
+#include <fstream>
+
 
 // Shaders
 const char* vertexShaderSource = R"(
 #version 330 core
 
-// vertex position from the VBO
+// position attribute — location 0, matches glVertexAttribPointer(0, ...)
 layout (location = 0) in vec3 aPos;
 
-// model, view, projection matrices
+// texture coordinate attribute — location 1, matches glVertexAttribPointer(1, ...)
+layout (location = 1) in vec2 aTexCoord;
+
+// matrices sent from CPU every frame via shader.setMat4()
 uniform mat4 uModel;
 uniform mat4 uView;
 uniform mat4 uProjection;
 
-// pass the height to the fragment shader so it can colour by block type
-out float vHeight;
+// pass UV to the fragment shader
+// out here = in on the fragment shader side
+out vec2 vTexCoord;
 
 void main()
 {
-    // pass the y position to the fragment shader
-    // fragment shader will use this to pick a colour
-    vHeight = aPos.y;
+    // pass UV straight through — no modification needed
+    vTexCoord = aTexCoord;
 
+    // standard MVP transform — place object, apply camera, apply perspective
     gl_Position = uProjection * uView * uModel * vec4(aPos, 1.0);
 }
 )";
@@ -40,22 +49,18 @@ const char* fragmentShaderSource = R"(
 
 out vec4 FragColor;
 
-// height value passed in from the vertex shader
-in float vHeight;
+// UV coordinate passed in from vertex shader
+in vec2 vTexCoord;
+
+// the texture atlas — bound in main.cpp before drawing
+// sampler2D is the GLSL type for a 2D texture
+uniform sampler2D uTexture;
 
 void main()
 {
-    // colour based on height — gives each layer a distinct colour
-    // these ranges match the height values from your noise generator
-    if (vHeight >= 9.0)
-        // grass — green
-        FragColor = vec4(0.2, 0.7, 0.2, 1.0);
-    else if (vHeight >= 7.0)
-        // dirt — brown
-        FragColor = vec4(0.5, 0.3, 0.1, 1.0);
-    else
-        // stone — grey
-        FragColor = vec4(0.5, 0.5, 0.5, 1.0);
+    // sample the texture at this UV coordinate
+    // texture() looks up the colour in the atlas at position vTexCoord
+    FragColor = texture(uTexture, vTexCoord);
 }
 )";
 
@@ -91,6 +96,21 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
 
 int main()
 {
+    // print the current working directory so we know where the exe is looking
+    std::cout << "========== FILE CHECK ==========" << std::endl;
+    std::cout << "Working directory: "
+        << std::filesystem::current_path()
+        << std::endl;
+
+    // ADD THESE LINES HERE — before the texture load
+    std::ifstream test("assets\\textures\\terrain_atlas.png");
+    if (test.good())
+        std::cout << "FILE EXISTS" << std::endl;
+    else
+        std::cout << "FILE NOT FOUND" << std::endl;
+    test.close();
+
+
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -112,6 +132,17 @@ int main()
 
     // world manages all chunks — generates and uploads them all on construction
     World world;
+
+    // load the texture atlas from disk into GPU memory
+    // path is relative to where the .exe runs — post-build event copies it there
+    Texture texture("assets\\textures\\terrain_atlas.png");
+
+    std::cout << "========== TEXTURE CHECK ==========" << std::endl;
+    if (texture.ID == 0)
+        std::cerr << ">>> TEXTURE FAILED TO LOAD" << std::endl;
+    else
+        std::cout << ">>> TEXTURE OK — ID: " << texture.ID << std::endl;
+    std::cout << "====================================" << std::endl;
 
     // create camera starting 3 units back from the origin, looking forward
     //Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
@@ -180,6 +211,14 @@ int main()
         // send view and projection once — they're the same for all chunks
         shader.setMat4("uView", view);
         shader.setMat4("uProjection", projection);
+
+        // bind the texture to slot 0 before drawing
+        // the shader samples from slot 0 by default (uTexture)
+        texture.bind(0);
+
+        // tell the shader which slot to sample from
+        // 0 matches GL_TEXTURE0 which is where we bound the texture
+        shader.setInt("uTexture", 0);
 
         // world.draw handles the model matrix and draw call for each chunk
         world.draw(shader);

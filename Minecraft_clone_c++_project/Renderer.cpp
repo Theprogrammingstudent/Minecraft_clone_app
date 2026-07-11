@@ -16,11 +16,22 @@ Renderer::Renderer()
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
 
-    // tell the GPU the format of each vertex
-    // each vertex is 3 floats (x, y, z) packed tightly together
-    // location 0 matches "layout (location = 0) in vec3 aPos" in the vertex shader
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    // CHANGED — each vertex is now 5 floats (x, y, z, u, v) not 3
+    // stride is the total size of one vertex in bytes
+    // offset tells the GPU where each attribute starts within that vertex
+    int stride = 5 * sizeof(float);
+
+    // attribute 0 — position (x, y, z)
+    // 3 floats, starts at byte 0 of each vertex
+    // matches "layout (location = 0) in vec3 aPos" in vertex shader
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
     glEnableVertexAttribArray(0);
+
+    // attribute 1 — texture coordinate (u, v)
+    // 2 floats, starts at byte 12 (after the 3 position floats)
+    // matches "layout (location = 1) in vec2 aTexCoord" in vertex shader
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
 
     // unbind VAO — good habit, prevents accidental modification
     glBindVertexArray(0);
